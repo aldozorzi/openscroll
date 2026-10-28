@@ -1,34 +1,75 @@
 import 'dotenv/config';
 import pg from 'pg';
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { resolveDatabaseUrl, runMigrations } from './migrate';
 
 const TEST_DB_PREFIX = 'openscroll_test_';
-const BASE_DIRECT_URL = process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll';
+const DEFAULT_TEMPLATE_DB = 'openscroll_test_template';
+const TEMPLATE_LOCK_KEY = 8312374650123456;
 
-function parseUrl(url: string): { host: string; port: number; user: string; password: string; database: string } {
-  const u = new URL(url);
-  return {
-    host: u.hostname,
-    port: parseInt(u.port || '5432'),
-    user: u.username,
-    password: u.password,
-    database: u.pathname.slice(1),
-  };
+function withDatabase(connectionString: string, database: string): string {
+  const url = new URL(connectionString);
+  url.pathname = `/${database}`;
+  return url.toString();
 }
 
-const baseConfig = parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll');
+function quoteIdent(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function createAdminPool(): pg.Pool {
+  return new pg.Pool({
+    connectionString: withDatabase(resolveDatabaseUrl(), 'postgres'),
+    max: 1,
+    connectionTimeoutMillis: 10_000,
+  });
+}
 
 /**
- * The test database is cloned from the development database, which may contain
- * thousands of pending/failed pg-boss jobs. If those are left in place, the
- * test worker picks them up, retries them forever and `waitForDrain` never
- * observes an empty queue. Start every run with a clean job table.
+ * The test database is built from a template that always reflects the current
+ * SQL migrations, so tests do not depend on the state of the development
+ * database. Without this, CI (where the base database starts empty) and any
+ * local checkout with a stale template would run DB tests against a schema
+ * that is missing tables.
+ */
+async function getTemplateDb(): Promise<string> {
+  const templateDb = process.env.TEST_TEMPLATE_DB || DEFAULT_TEMPLATE_DB;
+  const adminPool = createAdminPool();
+  const lock = await adminPool.connect();
+
+  try {
+    // Serialise template creation/migration across concurrent test runs.
+    await lock.query('SELECT pg_advisory_lock($1)', [TEMPLATE_LOCK_KEY]);
+
+    const exists = await lock.query('SELECT 1 FROM pg_database WHERE datname = $1', [
+      templateDb,
+    ]);
+    if (exists.rowCount === 0) {
+      console.log(`Creating test template database ${templateDb}...`);
+      try {
+        await lock.query(
+          `CREATE DATABASE ${quoteIdent(templateDb)} TEMPLATE template0`,
+        );
+      } catch (error) {
+        // Another process created it between the check and the CREATE.
+        if ((error as { code?: string }).code !== '42P04') throw error;
+      }
+    }
+
+    console.log(`Applying migrations to test template ${templateDb}...`);
+    await runMigrations(withDatabase(resolveDatabaseUrl(), templateDb));
+
+    return templateDb;
+  } finally {
+    await lock.query('SELECT pg_advisory_unlock($1)', [TEMPLATE_LOCK_KEY]);
+    lock.release();
+    await adminPool.end();
+  }
+}
+
+/**
+ * The test database is built from a fresh template, so the development
+ * database's pending/failed pg-boss jobs are not copied. Purging is kept as a
+ * defensive measure for templates supplied via `TEST_TEMPLATE_DB`.
  */
 async function purgeQueueState(pool: pg.Pool): Promise<void> {
   const { rows } = await pool.query<{ table_name: string }>(
@@ -40,40 +81,6 @@ async function purgeQueueState(pool: pg.Pool): Promise<void> {
     .map((name) => `pgboss."${name}"`);
   if (jobTables.length > 0) {
     await pool.query(`TRUNCATE TABLE ${jobTables.join(', ')} CASCADE`);
-  }
-}
-
-async function createTestDatabase(testName: string): Promise<string> {
-  const adminConfig = { ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' };
-  const adminPool = new pg.Pool(adminConfig);
-
-  const testDbName = `openscroll_test_${testName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-  try {
-    const templateDb = process.env.TEST_TEMPLATE_DB || (await getTemplateDb());
-    await adminPool.query(`CREATE DATABASE ${testDbName} TEMPLATE ${templateDb}`);
-    console.log(`Created test database: ${testDbName}`);
-    return testDbName;
-  } finally {
-    await adminPool.end();
-  }
-}
-
-async function getTemplateDb(): Promise<string> {
-  const templateName = 'openscroll_test_template';
-  const adminConfig = { ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' };
-  const adminPool = new pg.Pool({ ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' });
-
-  try {
-    const exists = await adminPool.query(`SELECT 1 FROM pg_database WHERE datname = 'openscroll_test_template'`);
-    if (exists.rows.length === 0) {
-      console.log('Creating test template database...');
-      await adminPool.query(`CREATE DATABASE openscroll_test_template TEMPLATE openscroll`);
-      console.log('Test template database created from openscroll (migrations already applied)');
-    }
-    return 'openscroll_test_template';
-  } finally {
-    await adminPool.end();
   }
 }
 
@@ -117,20 +124,26 @@ export async function getSharedTestDb(): Promise<TestDatabaseHandle> {
     return sharedTestDb;
   }
 
-  const adminConfig = { ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' };
-  const adminPool = new pg.Pool({ ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' });
-
+  const adminPool = createAdminPool();
   const testDbName = `openscroll_test_shared_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   try {
     const templateDb = await getTemplateDb();
-    await adminPool.query(`CREATE DATABASE ${testDbName} TEMPLATE ${templateDb}`);
+    // CREATE DATABASE ... TEMPLATE fails if another session is connected to
+    // the template; a previous run may have left a connection open.
+    await adminPool.query(
+      'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+      [templateDb],
+    );
+    await adminPool.query(
+      `CREATE DATABASE ${quoteIdent(testDbName)} TEMPLATE ${quoteIdent(templateDb)}`,
+    );
     console.log(`Created shared test database: ${testDbName}`);
   } finally {
     await adminPool.end();
   }
 
-  const url = `postgresql://openscroll:openscroll@localhost:5432/${testDbName}`;
+  const url = withDatabase(resolveDatabaseUrl(), testDbName);
   const pool = new pg.Pool({
     connectionString: url,
     max: 10,
@@ -150,11 +163,13 @@ export async function getSharedTestDb(): Promise<TestDatabaseHandle> {
 export async function destroySharedTestDb(): Promise<void> {
   if (sharedTestDb) {
     await sharedTestDb.pool.end();
-    const adminConfig = { ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' };
-    const adminPool = new pg.Pool({ ...parseUrl(process.env.DIRECT_URL ?? 'postgresql://openscroll:openscroll@localhost:5432/openscroll'), database: 'postgres' });
+    const adminPool = createAdminPool();
     try {
-      await adminPool.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${sharedTestDb.dbName}'`);
-      await adminPool.query(`DROP DATABASE IF EXISTS ${sharedTestDb.dbName}`);
+      await adminPool.query(
+        'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+        [sharedTestDb.dbName],
+      );
+      await adminPool.query(`DROP DATABASE IF EXISTS ${quoteIdent(sharedTestDb.dbName)}`);
       console.log(`Dropped shared test database: ${sharedTestDb.dbName}`);
     } finally {
       await adminPool.end();

@@ -1,16 +1,27 @@
 import 'dotenv/config';
 import { readdir, readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createPool } from './client';
 
 const migrationsDir = fileURLToPath(new URL('../migrations', import.meta.url));
 
-async function main(): Promise<void> {
-  const connectionString =
+export const DEFAULT_DATABASE_URL =
+  'postgresql://openscroll:openscroll@localhost:5432/openscroll';
+
+export function resolveDatabaseUrl(): string {
+  return (
     process.env.DIRECT_URL ??
     process.env.DATABASE_URL ??
-    'postgresql://openscroll:openscroll@localhost:5432/openscroll';
+    DEFAULT_DATABASE_URL
+  );
+}
 
+/**
+ * Applies every pending SQL migration in `packages/db/migrations` to the given
+ * database. Safe to call on an already-migrated database: applied files are
+ * recorded in `schema_migrations` and skipped.
+ */
+export async function runMigrations(connectionString: string): Promise<void> {
   const pool = createPool(connectionString, 1);
   const client = await pool.connect();
 
@@ -57,7 +68,17 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+async function main(): Promise<void> {
+  await runMigrations(resolveDatabaseUrl());
+}
+
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
