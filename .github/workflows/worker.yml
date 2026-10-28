@@ -1,0 +1,61 @@
+name: Worker
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: openscroll-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: production
+      TZ: UTC
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'google' }}
+      LLM_MODEL: ${{ vars.LLM_MODEL || 'gemini-2.5-flash-lite' }}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_BASE_URL: ${{ vars.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1' }}
+      OPENROUTER_APP_URL: ${{ vars.OPENROUTER_APP_URL }}
+      OPENROUTER_APP_NAME: ${{ vars.OPENROUTER_APP_NAME || 'OpenScroll' }}
+      EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER || 'cloudflare' }}
+      EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || '@cf/baai/bge-m3' }}
+      EMBEDDING_DIM: ${{ vars.EMBEDDING_DIM || '1024' }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MAX_LLM_TOKENS_PER_DAY: ${{ vars.MAX_LLM_TOKENS_PER_DAY || '200000' }}
+      MAX_EMBEDDING_TOKENS_PER_DAY: ${{ vars.MAX_EMBEDDING_TOKENS_PER_DAY || '1000000' }}
+      LLM_DAILY_BUDGET_USD: '0'
+      RAW_CONTENT_RETENTION_DAYS: ${{ vars.RAW_CONTENT_RETENTION_DAYS || '7' }}
+      CLEANED_CONTENT_RETENTION_DAYS: ${{ vars.CLEANED_CONTENT_RETENTION_DAYS || '30' }}
+      FEED_FRESHNESS_HALF_LIFE_DAYS: ${{ vars.FEED_FRESHNESS_HALF_LIFE_DAYS || '14' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Drain worker queues
+        run: pnpm worker:run

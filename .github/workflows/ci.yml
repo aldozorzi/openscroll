@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: openscroll
+          POSTGRES_PASSWORD: openscroll
+          POSTGRES_DB: openscroll
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openscroll -d openscroll"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://openscroll:openscroll@localhost:5432/openscroll
+      DIRECT_URL: postgresql://openscroll:openscroll@localhost:5432/openscroll
+      AUTH_SECRET: ci-auth-secret-0123456789abcdef0123456789abcdef
+      CRON_SECRET: ci-cron-secret-0123456789abcdef0123456789
+      ADMIN_TOKEN: ci-admin-token-0123456789abcdef0123456789
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_SOURCE_URL: https://github.com/openscroll/openscroll
+      LLM_PROVIDER: mock
+      EMBEDDING_PROVIDER: mock
+      LLM_DAILY_BUDGET_USD: "0"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_STANDALONE: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm db:migrate
+      - run: pnpm test
+        env:
+          RUN_WORKER_DB_TESTS: "1"
+      - run: pnpm --filter @openscroll/web build
+      - run: pnpm audit --prod --audit-level=high

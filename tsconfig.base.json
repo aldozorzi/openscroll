@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@openscroll/contracts": ["packages/contracts/src/index.ts"],
+      "@openscroll/config": ["packages/config/src/index.ts"],
+      "@openscroll/db": ["packages/db/src/index.ts"],
+      "@openscroll/queue": ["packages/queue/src/index.ts"],
+      "@openscroll/ingest": ["packages/ingest/src/index.ts"],
+      "@openscroll/ai": ["packages/ai/src/index.ts"],
+      "@openscroll/recommendation": ["packages/recommendation/src/index.ts"],
+      "@openscroll/fsrs": ["packages/fsrs/src/index.ts"]
+    }
+  }
+}

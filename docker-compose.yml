@@ -1,0 +1,103 @@
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql://openscroll:openscroll@db:5432/openscroll
+  DIRECT_URL: postgresql://openscroll:openscroll@db:5432/openscroll
+  NEXT_TELEMETRY_DISABLED: "1"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: openscroll-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openscroll
+      POSTGRES_PASSWORD: openscroll
+      POSTGRES_DB: openscroll
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - openscroll-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openscroll -d openscroll"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      target: worker
+    image: openscroll-worker:local
+    env_file:
+      - .env
+    environment: *app-environment
+    command: ["pnpm", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: web
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SOURCE_URL: ${NEXT_PUBLIC_SOURCE_URL:-https://github.com/openscroll/openscroll}
+    image: openscroll-web:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      <<: *app-environment
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      target: worker
+    image: openscroll-worker:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment: *app-environment
+    command: ["pnpm", "worker:watch"]
+    ports:
+      - "${QUEUE_WEBHOOK_PORT:-3101}:3101"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["bullmq"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - openscroll-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  openscroll-db-data:
+  openscroll-redis-data:

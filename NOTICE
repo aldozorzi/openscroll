@@ -1,0 +1,45 @@
+OpenScroll
+Copyright (C) 2026 OpenScroll contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See LICENSE for the full text.
+
+OpenScroll is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+Third-party software
+--------------------
+
+The production dependency tree is predominantly MIT, Apache-2.0, ISC, BSD-2-Clause,
+BSD-3-Clause, and MPL-2.0 licensed. Copyright and license texts remain with the
+respective packages installed under node_modules.
+
+Direct runtime dependencies and their licenses:
+
+  @mozilla/readability        Apache-2.0
+  @node-rs/argon2             MIT
+  bullmq                      MIT
+  drizzle-orm                 Apache-2.0
+  fast-xml-parser             MIT
+  framer-motion               MIT
+  ioredis                     MIT
+  ipaddr.js                   MIT
+  linkedom                    ISC
+  next                        MIT
+  pg                          MIT
+  pg-boss                     MIT
+  react, react-dom            MIT
+  rss-parser                  MIT
+  sanitize-html               MIT
+  ts-fsrs                     MIT
+  undici                      MIT
+  zod                         MIT
+
+Development-only dependencies, including Playwright, TypeScript, Vitest, and
+Tailwind CSS, are not distributed as part of the production application.
+
+Run `pnpm licenses list` to inspect the complete dependency license inventory.
+No dependency is known to impose terms incompatible with AGPL-3.0 distribution.

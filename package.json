@@ -1,0 +1,52 @@
+{
+  "name": "openscroll",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @openscroll/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "tsx test/run-tests.ts",
+    "test:unit": "pnpm -r test",
+    "test:e2e": "tsx test/run-e2e-tests.ts",
+    "db:generate": "pnpm --filter @openscroll/db generate",
+    "db:migrate": "pnpm --filter @openscroll/db migrate",
+    "db:seed": "pnpm --filter @openscroll/db seed",
+    "db:curate-tech": "pnpm --filter @openscroll/db curate-tech",
+    "source:add": "pnpm --filter @openscroll/worker source:add",
+    "source:list": "pnpm --filter @openscroll/worker source:list",
+    "source:import": "pnpm --filter @openscroll/worker source:import",
+    "worker": "pnpm --filter @openscroll/worker start",
+    "worker:run": "pnpm --filter @openscroll/worker drain",
+    "worker:watch": "pnpm --filter @openscroll/worker watch",
+    "worker:schedule": "pnpm --filter @openscroll/worker schedule",
+    "worker:process-articles": "pnpm --filter @openscroll/worker process:articles"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "drizzle-orm": "^0.45.4",
+    "ipaddr.js": "^2.5.0",
+    "linkedom": "^0.18.14",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0",
+    "rss-parser": "^3.13.0",
+    "sanitize-html": "^2.18.1",
+    "undici": "^8.12.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "@types/sanitize-html": "^2.16.2",
+    "dotenv": "^18.0.8",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

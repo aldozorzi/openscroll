@@ -1,0 +1,31 @@
+{
+  "name": "@openscroll/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@openscroll/ai": "workspace:*",
+    "@openscroll/config": "workspace:*",
+    "@openscroll/contracts": "workspace:*",
+    "@openscroll/db": "workspace:*",
+    "@openscroll/ingest": "workspace:*",
+    "@openscroll/queue": "workspace:*",
+    "@openscroll/recommendation": "workspace:*"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts run",
+    "drain": "tsx src/cli.ts run",
+    "watch": "tsx src/cli.ts watch",
+    "schedule": "tsx src/cli.ts schedule",
+    "enqueue-source": "tsx src/cli.ts enqueue-source",
+    "process:articles": "tsx src/cli.ts process-articles",
+    "source:add": "tsx src/source-cli.ts add",
+    "source:list": "tsx src/source-cli.ts list",
+    "source:import": "tsx src/source-cli.ts import",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}
